@@ -31,3 +31,35 @@ export function tripFolder(trip) {
   const name = `${trip.name.split('|')[0].trim()} | ${label || year}`.replace(/[/\\]/g, '-')
   return { name, year }
 }
+
+// ---------- files in a folder (heritage research folders) ----------
+export const folderIdFromUrl = url => String(url || '').match(/\/folders\/([\w-]{10,})/)?.[1] || String(url || '').match(/[?&]id=([\w-]{10,})/)?.[1] || null
+export const MAX_FILE_MB = 20
+
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).split(',')[1] || '')
+    r.onerror = () => reject(new Error(`Couldn't read ${file.name}`))
+    r.readAsDataURL(file)
+  })
+}
+
+export async function uploadToFolder(tenantId, folderId, file) {
+  if (file.size > MAX_FILE_MB * 1024 * 1024) throw new Error(`${file.name} is over ${MAX_FILE_MB} MB: add it in Google Drive instead.`)
+  const data_base64 = await fileToBase64(file)
+  return callDrive(tenantId, 'upload', { folder_id: folderId, name: file.name, mime_type: file.type || 'application/octet-stream', data_base64 })
+}
+
+// Fetches the file through the app and hands it to the browser as a download.
+export async function downloadFile(tenantId, fileId) {
+  const r = await callDrive(tenantId, 'download', { file_id: fileId })
+  const url = URL.createObjectURL(new Blob([base64ToBuffer(r.data_base64)], { type: r.mime_type }))
+  const a = document.createElement('a'); a.href = url; a.download = r.name
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  return r.name
+}
+
+// Default name for the heritage research folder inside the trip's folder (tenant can override).
+export const heritageFolderName = tenant => tenant.settings?.drive?.heritage_folder_name || 'Heritage Research'

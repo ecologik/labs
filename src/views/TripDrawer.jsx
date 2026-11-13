@@ -48,7 +48,8 @@ export default function TripDrawer({ tenant, trip, teamById, guides, onClose, on
       tour_name: f.tour_name.trim() || null, pax_min: pMin, pax_max: pMax, destinations: f.destinations,
       tour_leader_id: f.tour_leader_id || null, notes: f.notes.trim() || null, links, ...f.flags,
     }
-    if (hasModule('heritage')) patch.heritage_folder = f.heritage_folder.trim() ? { ...(d.heritage_folder || {}), url: f.heritage_folder.trim() } : null
+    if (hasModule('heritage')) patch.heritage_folder = !f.heritage_folder.trim() ? null
+      : f.heritage_folder.trim() === d.heritage_folder?.url ? d.heritage_folder : { url: f.heritage_folder.trim() }   // a new link: forget the old folder id
     if (hasModule('gifts')) patch.gift = { ...f.gift, rooms: num(f.gift.rooms), location: f.gift.location.trim(), note: f.gift.note.trim() }
     setBusy(true); setErr(null)
     try {

@@ -19,9 +19,11 @@ import Icon from './views/Icon'
 import NewTripModal from './views/NewTripModal'
 import DestinationsAdmin from './views/DestinationsAdmin'
 import TeamAdmin from './views/TeamAdmin'
+import HeritageView from './views/Heritage'
 
 const STAFF_NAV = [
   { key: 'trips', label: 'Trips', icon: 'trips' },
+  { key: 'heritage', label: 'Heritage Trips', icon: 'heritage', module: 'heritage' },
   { key: 'mine', label: 'My Tasks', icon: 'mine' },
   { key: 'team', label: 'Team Tasks', icon: 'team' },
 ]
@@ -37,8 +39,8 @@ const GUIDE_NAV = [
 ]
 
 function Shell() {
-  const { tenant, role, isStaff, isAdmin, membership, memberships, switchTenant, user, signOut } = useSession()
-  const mainNav = isStaff ? STAFF_NAV : GUIDE_NAV
+  const { tenant, role, isStaff, isAdmin, membership, memberships, switchTenant, user, signOut, hasModule } = useSession()
+  const mainNav = (isStaff ? STAFF_NAV : GUIDE_NAV).filter(n => !n.module || hasModule(n.module))
   const nav = isAdmin ? [...mainNav, ...ADMIN_NAV] : mainNav
   const [view, setView] = useState(nav[0].key)
   const [tripId, setTripId] = useState(null)
@@ -54,6 +56,7 @@ function Shell() {
     const me = membership?.team_member_id
     return {
       trips: data.trips.length,
+      heritage: data.trips.filter(t => t.details?.heritage).length,
       mine: me ? data.tasks.filter(t => t.assignees.includes(me) && t.status !== 'Complete' && !(t.gate != null && (tripById[t.trip_id]?.trip_stage ?? 0) < t.gate)).length : 0,
     }
   }, [data.trips, data.tasks, tripById, membership])
@@ -85,6 +88,8 @@ function Shell() {
       onStatus={onStatus} onNote={onNote} back={() => setTripId(null)} reload={data.reload} />
   else if (view === 'trips')
     body = <TripsView tenant={tenant} guides={data.guides} trips={data.trips} tasks={data.tasks} teamById={teamById} openTrip={openTrip} reload={data.reload} />
+  else if (view === 'heritage')
+    body = <HeritageView tenant={tenant} trips={data.trips} teamById={teamById} openTrip={openTrip} reload={data.reload} />
   else if (view === 'templates' && isAdmin)
     body = <TemplatesAdmin team={data.team} />
   else if (view === 'people' && isAdmin)

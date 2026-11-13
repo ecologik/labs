@@ -5,6 +5,11 @@
 //   browse       { folder_id? }   list year folders (no folder_id) or a folder's subfolders + docs
 //   client_file  { file_id }      the Client File as .docx bytes (Google Docs are exported)
 //   find_folder  { name, year, create? }  find (or create) "<name>" inside the year folder
+//   folder       { folder_id }    a folder's name + link (to link a folder pasted as a link)
+//   subfolder    { parent_id, name, create? }  find (or create) a folder inside another one
+//   files        { folder_id }    everything in a folder (research folders: photos, PDFs, docs…)
+//   download     { file_id }      a file's bytes (Google Docs/Sheets/Slides are exported)
+//   upload       { folder_id, name, mime_type, data_base64 }  add a file to a folder
 // The Shared Drive is named in tenants.settings.drive.name (e.g. "01 | Trips").
 // Everything stays inside that one drive: ids from elsewhere are refused.
 //
@@ -15,6 +20,14 @@ const DRIVE = 'https://www.googleapis.com/drive/v3'
 const FOLDER = 'application/vnd.google-apps.folder'
 const GDOC = 'application/vnd.google-apps.document'
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const MAX_BYTES = 20 * 1024 * 1024
+// Google's own formats can't be downloaded as-is: export them to the nearest Office/PDF format.
+const EXPORTS: Record<string, [string, string]> = {
+  [GDOC]: [DOCX, '.docx'],
+  'application/vnd.google-apps.spreadsheet': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx'],
+  'application/vnd.google-apps.presentation': ['application/pdf', '.pdf'],
+  'application/vnd.google-apps.drawing': ['image/png', '.png'],
+}
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -27,6 +40,10 @@ class HttpError extends Error {
 }
 
 // ---------- Google auth (service account → access token), cached per instance ----------
+export const toBase64 = (buf: Uint8Array) => {
+  let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+  return btoa(s)
+}
 const b64url = (b: ArrayBuffer | Uint8Array | string) => {
   const bytes = typeof b === 'string' ? new TextEncoder().encode(b) : new Uint8Array(b as ArrayBuffer)
   let s = ''; for (const x of bytes) s += String.fromCharCode(x)
@@ -90,6 +107,22 @@ export function driveApi(token: string, fetchFn = fetch) {
     async meta(id: string) {
       return await (await call(`/files/${encodeURIComponent(id)}`, { fields: 'id,name,mimeType,driveId,parents,webViewLink,size' })).json()
     },
+    async upload(name: string, mimeType: string, parent: string, bytes: Uint8Array) {
+      const boundary = 'labs' + crypto.randomUUID().replace(/-/g, '')
+      const enc = new TextEncoder()
+      const head = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [parent] })}\r\n` +
+        `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`)
+      const tail = enc.encode(`\r\n--${boundary}--`)
+      const body = new Uint8Array(head.length + bytes.length + tail.length)
+      body.set(head); body.set(bytes, head.length); body.set(tail, head.length + bytes.length)
+      const q = new URLSearchParams({ uploadType: 'multipart', supportsAllDrives: 'true', fields: 'id,name,mimeType,size,modifiedTime,webViewLink' })
+      const res = await fetchFn(`https://www.googleapis.com/upload/drive/v3/files?${q}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+      })
+      const j = await res.json()
+      if (!res.ok) throw new HttpError(502, `Google Drive: ${j.error?.message || res.status}`)
+      return j
+    },
     async createFolder(name: string, parent: string) {
       return await (await call('/files', { fields: 'id,name,mimeType,webViewLink' }, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -109,6 +142,16 @@ export async function handle(body: any, ctx: { drive: ReturnType<typeof driveApi
     const m = await drive.meta(id)
     if (m.driveId !== driveId) throw new HttpError(403, 'That file is not in the trips drive.')
     return m
+  }
+  const folderIn = async (id: string) => {
+    const m = await inDrive(id)
+    if (m.mimeType !== FOLDER) throw new HttpError(400, 'That is not a folder.')
+    return m
+  }
+  const cleanName = (n: unknown) => {
+    const name = String(n ?? '').replace(/[\/\\\u0000-\u001f]/g, '-').trim()
+    if (!name || name.length > 200) throw new HttpError(400, 'Bad name')
+    return name
   }
   const yearFolder = async (year: string, create: boolean) => {
     if (!/^\d{4}$/.test(String(year))) throw new HttpError(400, 'Bad year')
@@ -131,9 +174,7 @@ export async function handle(body: any, ctx: { drive: ReturnType<typeof driveApi
       const res = m.mimeType === GDOC
         ? await drive.call(`/files/${m.id}/export`, { mimeType: DOCX })
         : await drive.call(`/files/${m.id}`, { alt: 'media' })
-      const buf = new Uint8Array(await res.arrayBuffer())
-      let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000))
-      return { name: m.name, url: m.webViewLink, parent: m.parents?.[0] || null, docx_base64: btoa(s) }
+      return { name: m.name, url: m.webViewLink, parent: m.parents?.[0] || null, docx_base64: toBase64(new Uint8Array(await res.arrayBuffer())) }
     }
     case 'find_folder': {
       const name = String(body.name || '').trim()
@@ -150,6 +191,45 @@ export async function handle(body: any, ctx: { drive: ReturnType<typeof driveApi
       const m = await inDrive(body.folder_id)
       if (m.mimeType !== FOLDER) throw new HttpError(400, 'That link is not a folder.')
       return { folder: { id: m.id, name: m.name, url: m.webViewLink } }
+    }
+    case 'subfolder': {
+      const parent = await folderIn(body.parent_id)
+      const name = cleanName(body.name)
+      const hit = (await drive.list(`'${parent.id}' in parents and mimeType = '${FOLDER}' and name = '${esc(name)}' and trashed = false`, driveId))[0]
+      if (hit) return { folder: { id: hit.id, name: hit.name, url: hit.webViewLink }, created: false }
+      if (!body.create) return { folder: null }
+      const f = await drive.createFolder(name, parent.id)
+      return { folder: { id: f.id, name: f.name, url: f.webViewLink }, created: true }
+    }
+    case 'files': {
+      const m = await folderIn(body.folder_id)
+      const files = await drive.list(`'${m.id}' in parents and trashed = false`, driveId, 'id,name,mimeType,size,modifiedTime,webViewLink,thumbnailLink')
+      files.sort((a, b) => Number(b.mimeType === FOLDER) - Number(a.mimeType === FOLDER) || a.name.localeCompare(b.name))
+      return { folder: { id: m.id, name: m.name, url: m.webViewLink }, files }
+    }
+    case 'download': {
+      const m = await inDrive(body.file_id)
+      if (m.mimeType === FOLDER) throw new HttpError(400, 'That is a folder.')
+      if (m.size && Number(m.size) > MAX_BYTES) throw new HttpError(400, 'That file is over 20 MB: open it in Google Drive instead.')
+      const exp = EXPORTS[m.mimeType]
+      if (!exp && m.mimeType.startsWith('application/vnd.google-apps.')) throw new HttpError(400, 'This kind of Google file can only be opened in Google Drive.')
+      const res = exp ? await drive.call(`/files/${m.id}/export`, { mimeType: exp[0] }) : await drive.call(`/files/${m.id}`, { alt: 'media' })
+      const buf = new Uint8Array(await res.arrayBuffer())
+      if (buf.length > MAX_BYTES) throw new HttpError(400, 'That file is over 20 MB: open it in Google Drive instead.')
+      const name = exp && !m.name.toLowerCase().endsWith(exp[1]) ? m.name + exp[1] : m.name
+      return { name, mime_type: exp ? exp[0] : m.mimeType, data_base64: toBase64(buf) }
+    }
+    case 'upload': {
+      const parent = await folderIn(body.folder_id)
+      const name = cleanName(body.name)
+      const mime = typeof body.mime_type === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(body.mime_type) && !body.mime_type.startsWith('application/vnd.google-apps.')
+        ? body.mime_type : 'application/octet-stream'
+      if (typeof body.data_base64 !== 'string') throw new HttpError(400, 'No file')
+      let bytes: Uint8Array
+      try { bytes = Uint8Array.from(atob(body.data_base64), c => c.charCodeAt(0)) } catch { throw new HttpError(400, 'Bad file data') }
+      if (bytes.length > MAX_BYTES) throw new HttpError(400, 'Files over 20 MB have to be added in Google Drive.')
+      const f = await drive.upload(name, mime, parent.id, bytes)
+      return { file: f }
     }
     default: throw new HttpError(400, 'Unknown action')
   }
