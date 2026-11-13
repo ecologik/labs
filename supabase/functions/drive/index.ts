@@ -9,6 +9,7 @@
 //   subfolder    { parent_id, name, create? }  find (or create) a folder inside another one
 //   files        { folder_id }    everything in a folder (research folders: photos, PDFs, docs…)
 //   counts       { folder_ids }   how many files (not subfolders) sit directly in each folder
+//   trash        { file_id, folder_id }  move a file (not a folder) from that folder to Drive's trash
 //   download     { file_id }      a file's bytes (Google Docs/Sheets/Slides are exported)
 //   upload       { folder_id, name, mime_type, data_base64 }  add a file to a folder
 // The Shared Drive is named in tenants.settings.drive.name (e.g. "01 | Trips").
@@ -216,6 +217,13 @@ export async function handle(body: any, ctx: { drive: ReturnType<typeof driveApi
         counts[id] = (await drive.list(`'${id}' in parents and trashed = false and mimeType != '${FOLDER}'`, driveId, 'id')).length
       }))
       return { counts }
+    }
+    case 'trash': {
+      const m = await inDrive(body.file_id)
+      if (m.mimeType === FOLDER) throw new HttpError(400, 'Folders can only be deleted in Google Drive.')
+      if (!body.folder_id || !(m.parents || []).includes(body.folder_id)) throw new HttpError(400, 'That file is not in this folder.')
+      await drive.call(`/files/${m.id}`, { fields: 'id' }, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) })
+      return { trashed: m.id, name: m.name }
     }
     case 'download': {
       const m = await inDrive(body.file_id)

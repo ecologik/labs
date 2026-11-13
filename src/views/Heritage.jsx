@@ -37,6 +37,11 @@ export function ResearchFolder({ tenant, trip, folder, onClose }) {
     setBusy(f.id); setErr(null)
     try { await downloadFile(tenant.id, f.id) } catch (e) { setErr(e.message) } finally { setBusy(null) }
   }
+  const trash = async f => {
+    if (!window.confirm(`Delete “${f.name}”? It goes to Google Drive's trash, where it can be restored for 30 days.`)) return
+    setBusy(f.id); setErr(null)
+    try { await callDrive(tenant.id, 'trash', { file_id: f.id, folder_id: here.id }); await load() } catch (e) { setErr(e.message) } finally { setBusy(null) }
+  }
   const upload = async list => {
     const arr = Array.from(list || [])
     if (!arr.length) return
@@ -86,6 +91,7 @@ export function ResearchFolder({ tenant, trip, folder, onClose }) {
                 <span className="muted small rf-meta">{[fmtSize(Number(f.size)), fmtWhen(f.modifiedTime)].filter(Boolean).join(' · ')}</span>
                 {f.webViewLink && <a className="linkbtn subtle small" href={f.webViewLink} target="_blank" rel="noreferrer">View</a>}
                 <button className="linkbtn small" disabled={busy === f.id} onClick={() => download(f)}>{busy === f.id ? 'Downloading…' : 'Download'}</button>
+                <button className="linkbtn subtle small danger-txt" disabled={busy === f.id} onClick={() => trash(f)} aria-label={`Delete ${f.name}`}>Delete</button>
               </div>)}
         </div>
         <p className="muted small" style={{ margin: 0 }}>Drag files onto this window to upload them (up to {MAX_FILE_MB} MB each). Everything is saved in the trip's Google Drive folder.</p>
