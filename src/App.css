@@ -439,3 +439,14 @@
 .ppl-color.on{box-shadow:0 0 0 2px var(--ink)}
 .ppl-form-f{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
 .ppl-toggle{margin-top:10px}
+/* ---------- Google Drive ---------- */
+.drive-picker{width:min(560px,100%);max-height:calc(100vh - 32px)}
+.dp-path{font-size:13px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:2px}
+.dp-path .linkbtn{display:inline;font-size:13px}
+.dp-search{padding:7px 10px;border:1px solid var(--line);border-radius:8px}
+.dp-list{display:flex;flex-direction:column;overflow:auto;max-height:55vh;border:1px solid var(--line);border-radius:10px}
+.dp-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;border-bottom:1px solid var(--line-2);background:var(--surface);text-align:left;cursor:pointer;font-size:13.5px;color:var(--ink)}
+.dp-row:hover{background:var(--wine-tint)}
+.dp-row .dp-name{flex:1}
+.dp-row.doc .muted{color:var(--wine)}
+.drive-btn{font-size:12.5px}

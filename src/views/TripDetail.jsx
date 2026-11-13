@@ -6,6 +6,7 @@ import { GiftGlyph, WineGlyph } from './Icon'
 import TripDrawer from './TripDrawer'
 import GuideSchedule from './GuideSchedule'
 import GuideNoteCard from './GuideNote'
+import DriveFolderButton from './DriveFolderButton'
 import TaskBoard, { LayoutToggle, useTaskLayout } from './TaskBoard'
 import { STATUSES } from '../lib/format'
 import { Avatar, Chip, Empty, FilterPin, StatusFilter, TaskRow, useStatusFilter } from './common'
@@ -21,8 +22,8 @@ export default function TripDetail({ tenant, trip, tasks, teamById, tripById, gu
   const d = trip.details || {}
   const leader = guides.find(g => g.id === d.tour_leader_id)
   const pax = d.pax_min && d.pax_max && d.pax_min !== d.pax_max ? `${d.pax_min}–${d.pax_max} pax` : (d.pax_max || d.pax_min) ? `${d.pax_max || d.pax_min} pax` : null
-  const LINKS = [['client_file', 'Client file'], ['nivo', 'Nivo'], ['budget', 'Budget'], ['heritage_folder', 'Heritage folder']]
-  const linkUrl = k => k === 'heritage_folder' ? d.heritage_folder?.url : d.links?.[k]
+  const LINKS = [['drive_folder', 'Drive folder'], ['client_file', 'Client file'], ['nivo', 'Nivo'], ['budget', 'Budget'], ['heritage_folder', 'Heritage folder']]
+  const linkUrl = k => k === 'heritage_folder' ? d.heritage_folder?.url : k === 'drive_folder' ? d.drive_folder?.url : d.links?.[k]
 
   const mine = tasks.filter(t => t.trip_id === trip.id)
   const active = mine.filter(t => !isQueued(t, tripById))
@@ -85,10 +86,11 @@ export default function TripDetail({ tenant, trip, tasks, teamById, tripById, gu
           {!teamById[trip.lead_id] && pax && <span className="meta-txt">{pax}</span>}
           {leader && <span className="meta-txt lead" title="Tour leader"><Avatar member={leader} sm /> {leader.name} <span className="muted small">(tour leader)</span></span>}
         </div>
-        {(d.tour_name || LINKS.some(([k]) => linkUrl(k))) && (
+        {(d.tour_name || LINKS.some(([k]) => linkUrl(k)) || (hasModule('drive') && !d.drive_folder)) && (
           <div className="metarow sub">
             {d.tour_name && <span className="meta-txt">{d.tour_name}</span>}
             {LINKS.filter(([k]) => linkUrl(k)).map(([k, label]) => <a key={k} className="ext-link" href={linkUrl(k)} target="_blank" rel="noreferrer">{label} ↗</a>)}
+            {hasModule('drive') && !d.drive_folder && <DriveFolderButton tenant={tenant} trip={trip} reload={reload} />}
           </div>
         )}
         {d.notes && <p className="trip-notes">{d.notes}</p>}

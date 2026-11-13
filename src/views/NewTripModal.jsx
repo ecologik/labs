@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { createTrip } from '../lib/data'
 import { useSession } from '../lib/session'
-import { readClientFile } from '../lib/clientFile'
+import { readClientBuffer, readClientFile } from '../lib/clientFile'
+import { base64ToBuffer, callDrive, folderUrl } from '../lib/drive'
+import DrivePicker from './DrivePicker'
 
 export default function NewTripModal({ tenant, teamById, guides = [], onClose, onCreated }) {
   const { hasModule } = useSession()
@@ -11,20 +13,31 @@ export default function NewTripModal({ tenant, teamById, guides = [], onClose, o
   const [busy, setBusy] = useState(false)
   const [imp, setImp] = useState(null)        // { file, report } after reading a client file
   const [over, setOver] = useState(false)
+  const [picking, setPicking] = useState(false)
   const fileRef = useRef(null)
   const set = k => e => setF(v => ({ ...v, [k]: e.target.value }))
 
+  const ctx = () => ({
+    tripTypes: s.trip_types || [], destinations: s.destinations || [], flags: s.trip_flags || [],
+    team: Object.values(teamById).filter(m => m.active), guides: guides.filter(g => g.active), gifts: hasModule('gifts'),
+  })
+  const apply = (r, name, extra = {}) => {
+    setF(v => ({ ...v, ...r.fields, details: { ...v.details, ...r.details, ...extra } }))
+    setImp({ file: name, report: r.report })
+  }
   const load = async file => {
     if (!file) return
     setErr(null)
-    try {
-      const r = await readClientFile(file, {
-        tripTypes: s.trip_types || [], destinations: s.destinations || [], flags: s.trip_flags || [],
-        team: Object.values(teamById).filter(m => m.active), guides: guides.filter(g => g.active), gifts: hasModule('gifts'),
-      })
-      setF(v => ({ ...v, ...r.fields, details: { ...v.details, ...r.details } }))
-      setImp({ file: file.name, report: r.report })
-    } catch (x) { setErr(x.message) }
+    try { apply(await readClientFile(file, ctx()), file.name) } catch (x) { setErr(x.message) }
+  }
+  // From Google Drive: the doc comes back as .docx; its folder becomes the trip's Drive folder.
+  const fromDrive = async ({ file, folder }) => {
+    const r = await callDrive(tenant.id, 'client_file', { file_id: file.id })
+    const res = readClientBuffer(base64ToBuffer(r.docx_base64), ctx())
+    const extra = { links: { ...(f.details.links || {}), client_file: r.url } }
+    if (folder?.id) extra.drive_folder = { id: folder.id, name: folder.name, url: folderUrl(folder.id) }
+    apply(res, `${r.name} (Google Drive)`, extra)
+    setErr(null); setPicking(false)
   }
 
   const submit = async e => {
@@ -44,8 +57,9 @@ export default function NewTripModal({ tenant, teamById, guides = [], onClose, o
         <div className={'cf-drop' + (over ? ' over' : '')}
           onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
           onDrop={e => { e.preventDefault(); setOver(false); load(e.dataTransfer.files?.[0]) }}>
-          <button type="button" className="btn ghost" onClick={() => fileRef.current?.click()}>{imp ? 'Use a different file' : 'Fill from client file'}</button>
-          <span className="muted small">{imp ? <>Filled from <b>{imp.file}</b>. Check below, then create.</> : 'Upload the Word client file (.docx) from the Drive folder, or drop it here.'}</span>
+          {hasModule('drive') && <button type="button" className="btn ghost" onClick={() => setPicking(true)}>{imp ? 'Pick again from Drive' : 'Fill from Google Drive'}</button>}
+          <button type="button" className="btn ghost" onClick={() => fileRef.current?.click()}>{imp ? 'Upload a different file' : hasModule('drive') ? 'Upload .docx' : 'Fill from client file'}</button>
+          <span className="muted small">{imp ? <>Filled from <b>{imp.file}</b>. Check below, then create.</> : hasModule('drive') ? "Pick the client's file in Drive, or upload / drop a .docx." : 'Upload the Word client file (.docx) from the Drive folder, or drop it here.'}</span>
           <input ref={fileRef} type="file" hidden accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={e => { const x = e.target.files?.[0]; e.target.value = ''; load(x) }} />
         </div>
@@ -85,9 +99,11 @@ export default function NewTripModal({ tenant, teamById, guides = [], onClose, o
             ))}
           </div>
         )}
+        {f.details.drive_folder && <p className="hint">Drive folder linked: <b>{f.details.drive_folder.name}</b></p>}
         {err && <p className="err">{err}</p>}
         <div className="modal-f"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn" disabled={busy}>Create trip</button></div>
       </form>
+      {picking && <DrivePicker tenantId={tenant.id} onPick={fromDrive} onClose={() => setPicking(false)} />}
     </div>
   )
 }

@@ -254,7 +254,12 @@ export function parseClientText(text, ctx) {
 export async function readClientFile(file, ctx) {
   if (!/\.docx$/i.test(file.name)) throw new Error('Pick the Word (.docx) client file. In Google Docs: File → Download → Microsoft Word.')
   if (file.size > 15 * 1024 * 1024) throw new Error('That file is over 15 MB.')
-  const res = parseClientText(docxToText(await file.arrayBuffer()), ctx)
+  return readClientBuffer(await file.arrayBuffer(), ctx)
+}
+
+// Same, from .docx bytes (e.g. a Google Doc exported by the Drive function).
+export function readClientBuffer(buf, ctx) {
+  const res = parseClientText(docxToText(buf), ctx)
   if (!res.found) throw new Error("Couldn't find the client file fields (Client Name:, Travel Dates:, …) in that document.")
   if (res.report.every(r => r.status === 'empty')) throw new Error('That client file has no answers filled in yet.')
   return res
