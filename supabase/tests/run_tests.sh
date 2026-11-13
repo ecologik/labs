@@ -22,3 +22,4 @@ $P -f supabase/tests/rls_guide_schedule.sql
 $P -f supabase/tests/rls_branding.sql
 $P -f supabase/tests/rls_destinations.sql
 $P -f supabase/tests/rls_contacts.sql
+$P -f supabase/tests/rls_invites.sql

@@ -450,3 +450,13 @@
 .dp-row .dp-name{flex:1}
 .dp-row.doc .muted{color:var(--wine)}
 .drive-btn{font-size:12.5px}
+/* Team & guides: logins */
+.ppl-access{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;margin-top:4px}
+.acc-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line-2)}
+.acc-chip.on{background:#e7f2e8;color:#2f6b37;border-color:#cfe5d2}
+.acc-chip.wait{background:#fbf3e3;color:#8a6212;border-color:#f0e0bb}
+.acc-form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;width:100%;padding:10px 12px;margin-top:6px;border:1px solid var(--wine-line);border-radius:10px;background:var(--surface-2)}
+.acc-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink-2)}
+.acc-form input,.acc-form select{padding:6px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--surface)}
+.acc-form input[type=email]{min-width:230px}
+.acc-form .hint{flex-basis:100%;margin:0}

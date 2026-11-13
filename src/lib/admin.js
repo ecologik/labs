@@ -63,3 +63,10 @@ export const mergeDestination = (tenantId, from, into) =>
   rpc('admin_merge_destination', { p_tenant: tenantId, p_from: from, p_into: into })
 export const deleteDestination = (tenantId, name) =>
   rpc('admin_delete_destination', { p_tenant: tenantId, p_name: name })
+
+// Logins: who can sign in, linked to a person on the team or guide list.
+export const listAccess = tenantId => rpc('admin_access_list', { p_tenant: tenantId })
+export const invitePerson = (tenantId, { email, role, teamMemberId = null, guideId = null }) =>
+  rpc('admin_invite', { p_tenant: tenantId, p_email: email, p_role: role, p_team_member: teamMemberId, p_guide: guideId })
+export const revokeAccess = (tenantId, kind, id) =>
+  rpc('admin_revoke_access', { p_tenant: tenantId, p_kind: kind, p_id: id })
