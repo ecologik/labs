@@ -486,3 +486,6 @@
 .her-lead{display:inline-flex;align-items:center;gap:6px}
 .her-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 @media (max-width:600px){.rf-meta{display:none}}
+.her-folder{display:flex;align-items:center;gap:8px}
+.her-count{display:inline-block;padding:1px 8px;border-radius:999px;background:#f6ecd6;color:#7a5a12;font-weight:600;font-size:11.5px}
+.her-count.zero{background:var(--surface-2);color:var(--ink-3, #8b837c)}

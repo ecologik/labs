@@ -96,7 +96,7 @@ export function ResearchFolder({ tenant, trip, folder, onClose }) {
 
 // Open the trip's research folder, or link one: find/create "Heritage Research" inside the
 // trip's Drive folder, or pick any folder in the drive.
-export function ResearchFolderButton({ tenant, trip, reload, big }) {
+export function ResearchFolderButton({ tenant, trip, reload, big, onChange }) {
   const { hasModule } = useSession()
   const d = trip.details || {}
   const [open, setOpen] = useState(null)        // folder to show
@@ -125,7 +125,12 @@ export function ResearchFolderButton({ tenant, trip, reload, big }) {
 
   const cls = big ? 'btn' : 'linkbtn ext-link drive-btn'
   let body
-  if (linked && drive && linkedId) body = <button className={big ? 'btn' : 'linkbtn ext-link'} disabled={busy} onClick={openIt}>{busy ? 'Opening…' : big ? 'Open research folder ›' : 'Research folder'}</button>
+  if (linked && drive && linkedId) body = (
+    <span className="rf-link">
+      <button className={big ? 'btn' : 'linkbtn ext-link'} disabled={busy} onClick={openIt}>{busy ? 'Opening…' : big ? 'Open research folder ›' : 'Research folder'}</button>
+      {big && <button className="linkbtn subtle small" disabled={busy} onClick={() => setPicking(true)}>Change folder</button>}
+    </span>
+  )
   else if (linked) body = linked.url ? <a className={big ? 'btn ghost' : 'ext-link'} href={linked.url} target="_blank" rel="noreferrer">Research folder ↗</a> : null
   else if (!drive) body = <span className="muted small">No research folder yet: add its link in Edit trip details.</span>
   else body = (
@@ -143,13 +148,23 @@ export function ResearchFolderButton({ tenant, trip, reload, big }) {
       {picking && <DrivePicker tenantId={tenant.id} mode="folder" title="Pick the research folder" onClose={() => setPicking(false)}
         start={d.drive_folder?.id ? { id: d.drive_folder.id, name: d.drive_folder.name } : null}
         onPick={async ({ folder }) => { const r = await callDrive(tenant.id, 'folder', { folder_id: folder.id }); await save(r.folder); setPicking(false); setOpen(r.folder) }} />}
-      {open && <ResearchFolder tenant={tenant} trip={trip} folder={open} onClose={() => setOpen(null)} />}
+      {open && <ResearchFolder tenant={tenant} trip={trip} folder={open} onClose={() => { setOpen(null); onChange?.() }} />}
     </>
   )
 }
 
 // Heritage Trips: every heritage trip with its research folder, soonest first.
 export default function HeritageView({ tenant, trips, teamById, openTrip, reload }) {
+  const { hasModule } = useSession()
+  const [counts, setCounts] = useState({})
+  const folderOf = t => t.details?.heritage_folder?.id || folderIdFromUrl(t.details?.heritage_folder?.url)
+  const ids = trips.filter(isHeritage).map(folderOf).filter(Boolean).sort().join(',')
+  const driveOn = hasModule('drive')
+  const loadCounts = useCallback(() => {
+    if (!driveOn || !ids) return
+    callDrive(tenant.id, 'counts', { folder_ids: ids.split(',') }).then(r => setCounts(c => ({ ...c, ...r.counts }))).catch(() => {})
+  }, [tenant.id, ids, driveOn])
+  useEffect(() => { loadCounts() }, [loadCounts])
   const list = trips.filter(isHeritage).sort((a, b) => {
     const da = daysFromToday(a.end_date ?? a.start_date), db = daysFromToday(b.end_date ?? b.start_date)
     const pa = da != null && da < 0, pb = db != null && db < 0      // past trips go last
@@ -172,9 +187,10 @@ export default function HeritageView({ tenant, trips, teamById, openTrip, reload
                 {out != null && out <= 0 && back >= 0 && <b>on the ground</b>}
                 {lead && <span className="her-lead"><Avatar member={lead} sm /> {lead.name.split(' ')[0]}{pax ? ` · ${pax} pax` : ''}</span>}
               </div>
-              <div className="her-folder muted small">📁 {d.heritage_folder?.name || (d.heritage_folder?.url ? 'Linked folder' : 'No research folder yet')}</div>
+              <div className="her-folder muted small">📁 {d.heritage_folder?.name || (d.heritage_folder?.url ? 'Linked folder' : 'No research folder yet')}
+                {counts[folderOf(t)] != null && <span className={'her-count' + (counts[folderOf(t)] ? '' : ' zero')}>{counts[folderOf(t)]} file{counts[folderOf(t)] === 1 ? '' : 's'}</span>}</div>
             </div>
-            <div className="her-act"><ResearchFolderButton tenant={tenant} trip={t} reload={reload} big /></div>
+            <div className="her-act"><ResearchFolderButton tenant={tenant} trip={t} reload={reload} onChange={loadCounts} big /></div>
           </div>
         )
       })}

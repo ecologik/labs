@@ -8,6 +8,7 @@
 //   folder       { folder_id }    a folder's name + link (to link a folder pasted as a link)
 //   subfolder    { parent_id, name, create? }  find (or create) a folder inside another one
 //   files        { folder_id }    everything in a folder (research folders: photos, PDFs, docs…)
+//   counts       { folder_ids }   how many files (not subfolders) sit directly in each folder
 //   download     { file_id }      a file's bytes (Google Docs/Sheets/Slides are exported)
 //   upload       { folder_id, name, mime_type, data_base64 }  add a file to a folder
 // The Shared Drive is named in tenants.settings.drive.name (e.g. "01 | Trips").
@@ -206,6 +207,15 @@ export async function handle(body: any, ctx: { drive: ReturnType<typeof driveApi
       const files = await drive.list(`'${m.id}' in parents and trashed = false`, driveId, 'id,name,mimeType,size,modifiedTime,webViewLink,thumbnailLink')
       files.sort((a, b) => Number(b.mimeType === FOLDER) - Number(a.mimeType === FOLDER) || a.name.localeCompare(b.name))
       return { folder: { id: m.id, name: m.name, url: m.webViewLink }, files }
+    }
+    case 'counts': {
+      const ids = Array.isArray(body.folder_ids) ? body.folder_ids.filter((x: unknown) => typeof x === 'string' && /^[\w-]{10,100}$/.test(x)).slice(0, 60) : []
+      // corpora=drive limits every listing to the trips drive, so ids from elsewhere just count 0.
+      const counts: Record<string, number> = {}
+      await Promise.all(ids.map(async (id: string) => {
+        counts[id] = (await drive.list(`'${id}' in parents and trashed = false and mimeType != '${FOLDER}'`, driveId, 'id')).length
+      }))
+      return { counts }
     }
     case 'download': {
       const m = await inDrive(body.file_id)
